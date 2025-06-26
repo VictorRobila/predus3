@@ -10,8 +10,8 @@ from datetime import datetime
 import glob
 
 def main():
-    PREDUSROOT = "/path/to/predusroot"
-    PREDUSCRATCH = "/path/to/predusscratch" # we might not want to use the global perl txt file
+    PREDUSROOT = "/groups/bh6_gp/aq2268/predus2.0"
+    #PREDUSCRATCH = "/path/to/predusscratch" # we might not want to use the global perl txt file
     PSDcutoff = 0.6
 
     PWD = os.getcwd();
@@ -22,6 +22,7 @@ def main():
             {PGM} -s structure_ID -f structure_file -o structure_interface_file -k skan_file
             options:
             -t  server_type
+
             -V  verbose mode
             -D  debug mode
             -h  this help
@@ -32,7 +33,7 @@ def main():
     parser.add_argument('-s', required=True, help='Structure ID')
     parser.add_argument('-f', required=True, help='Structure file')
     parser.add_argument('-o', required=True, help='Output file for structure interface')
-    parser.add_argument('-k', required=True, help='SKAN file')
+    parser.add_argument('-k', help='SKAN file')
     parser.add_argument('-t', help='Server type', default=None)
     parser.add_argument('-V', action='store_true', help='Verbose mode')
     parser.add_argument('-D', action='store_true', help='Debug mode')
@@ -113,7 +114,7 @@ def main():
 
 
     structID = args.s
-    intfRes = runPredUS (structID, structFileLstF) # defined at the bottom
+    intfRes = runPredUS (structID, structFileLstF, wrkDir, skanFile) # defined at the bottom
     # Print to stderr
     sys.stderr.write("**** SVM\n\n")
 
@@ -129,7 +130,7 @@ def main():
     with open(temp_svm_out, "w") as OUTPUT:
         OUTPUT.write(f"{struct_id}\t{' '.join(intf_res)}\n")
 
-    # The line below was originally in the perl code. However, there are no loops. Pasting here just in case. 
+    # The line below was originally in the  perl code. However, there are no loops. Pasting here just in case. 
     # next if $intfRes[0] eq "not predicted";
     # ---------------------------------------------------------------------
     SvmPredict.predict(structID,workDir, *intfRes) #TODO: svmPredict has not yet been written
@@ -290,21 +291,22 @@ def main():
             sys.stderr.write(f"Error changing permissions in {wrkDir}: {e}\n")
 
     # Move temp.text and log the action
-    dst = f"/ifs/scratch/c2b2/bh_lab/shares/tmp/{args.s}.pd2.txt"
+    dst = f"/groups/bh6_gp/aq2268/predus2.0/tmp/{args.s}.pd2.txt"
     try:
         shutil.move(os.path.join(wrkDir, "temp.text"), dst)
         sys.stderr.write(f"Moved temp.text to {dst}\n")
     except IOError as e:
         sys.stderr.write(f"Error moving temp.text: {e}\n")
 
-def runPredUS(structID, structFileLstF):
+# everything after structFileLstF is added - Anthony
+def runPredUS(structID, structFileLstF, wrkDir, skanFile):
     # code 
     structureID = structID
     structureFile = structFileLstF
     logFile = os.path.join(wrkDir, "log", f"{structureID}.PredUS.log")
-    if(verbose):
-        print(f"\t...PredUS, log file at {logFile}")
-        print(f"\t\tTime Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    #if(verbose):
+    #    print(f"\t...PredUS, log file at {logFile}")
+    #    print(f"\t\tTime Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     neighborFile = os.path.join(wrkDir, f"{structureID}.nbr")
     neighbor_SAS={}
@@ -317,12 +319,25 @@ def runPredUS(structID, structFileLstF):
     neighbors = []
 
     neighborNum = len(neighbors) # should always return 0
-    if verbose:
-        print(f"structure neighbors: {neighborNum}.", file = sys.stderr)
+    #if verbose:
+    #    print(f"structure neighbors: {neighborNum}.", file = sys.stderr)
     if not neighborNum:
         skanTmpFile = os.path.join(wrkDir,f"{structureID}.08.skan.fa")
-        #if(not os.path.exists(skanFile)) or (os.path.getsize(skanFile) ==0):
-            #TODO: print some sort of error, im not sure what htey want 
+        if(not os.path.exists(skanFile)) or (os.path.getsize(skanFile) ==0):
+            with open(skanTmpFile, "w") as outfile:
+                try:
+                    #executable_path = "/Users/anthonyqi/Desktop/skan"
+                    args=[
+                            "/path/to/skan", 
+                            structureFile, 
+                            "/path/to/templates.60.skads",  
+                            "-p", "0.8",
+                            "-s", "0.6",
+                            "-minlength", "3"]
+                    result=subprocess.run(args, stdout=outfile, stderr=subprocess.PIPE, text=True,check=True)
+                except subprocess.CalledProcessError as e:
+                    print("Error in running SKAN: ")
+            #TODO: if the skan files doens't exist then we have to run /ifs/home/c2b2/bh_lab/petrey/pudge/bin/skan
     else:
         skanTmpFile = skanFile
     if os.path.exists(skanTmpFile) and os.path.getsize(skanTmpFile) >0:
