@@ -13,16 +13,17 @@
 ## input:
 ##   pdb file with BF field recording contacting frequencies
 ## output:
-##   1, pdb file with BF field recording the interface probabilities
-##   2, pdb file with BF field recording the interface bools
-##   3, interface residue list
+##   interface residue list
 ##
 ## the function is: 
 ##   p = f(bf) = 1/(1+exp((-bf+max(BF)/2)/(max(BF)/10)))
 ##             = 1/(1+exp((5*max(BF)-bf)/max(BF))
-
-## author:      Cliff@Honig Lab
-## date:        Nov 14, 2008
+##
+## original author (perl):    Cliff@Honig Lab
+## date:                      Nov 14, 2008
+## 
+## python Refactor & cleanup: Anthony@Honig Lab
+## date:                      Jul 2, 2025
 ## ----------------------------------------------------------------------------
 
 import argparse
@@ -116,7 +117,7 @@ pdbLength = len(pdbText)
 maxAtomBF = 0.0          # maximum atom BF
 maxResBF_avg = 0.0       # max residue BF by atom averages
 
-bfFieldWth = []
+bfFieldWth = [0]*pdbLength
 
 resNum = []
 resBF_max = []           # residue BF defined by max atom BF
@@ -131,6 +132,7 @@ for idx in range(pdbLength):
     if pdbLine.startswith(('ATOM', 'HETATM', 'SIGATM')):
         # Columns 23-26 in PDB format are 22-25 in 0-indexed Python
         resNum.append(pdbLine[22:26].strip())
+        resBF_max = [0.0]
         break
 
 resCount=0;
@@ -159,14 +161,19 @@ for idx in range(pdbLength):
 
 
             resNum.append(newResNum)
-            resBF_avg.append(atomBF)
-            resBF_max.append(atomBF)
+            resBF_avg.append(atomBF_val)
+            resBF_max.append(atomBF_val)
             resAtomCount=1
             resCount = len(resNum)-1
     else:
         resAtomCount +=1
-        resBF_avg[resCount]+=atomBF
-        if atomBF > resBF_max[resCount]:
+        while resCount >=len(resBF_avg):
+            resBF_avg.append(0.0) # account for perl auto resizing arrays
+        resBF_avg[resCount] += atomBF_val      
+        
+        while resCount >= len(resBF_max):
+            resBF_max.append(0.0)
+        if(atomBF_val>resBF_max[resCount]):
             resBF_max[resCount] = atomBF_val
 
 
@@ -182,10 +189,10 @@ if maxBF < 1:
     # check if INTF needs to be closed
     sys.exit()
 
-res_prob = []
+resProb = []
 for idx in range(resCount + 1):
     prob = 1 / (1 + math.exp((5 * maxBF - 10 * resBF[idx]) / maxBF))
-    res_prob.append(prob)
+    resProb.append(prob)
 
 
 intf = ""
@@ -199,26 +206,28 @@ for idx in range(pdbLength):
 
     if newResNum != resNum[resCount] or len(resNum)==0:
         res=resNum[resCount].replace(" ", "")
-        intf += f"{res}:{resProb[resCount]}"
+        intf += f"{res}:{resProb[resCount]} " # this is 1 more s.f. than the perl representation of the code
 
         resCount+=1
 
         if resCount < len(resNum):
-            resNUm[resCount] = newResNum
+            resNum[resCount] = newResNum
         else:
             resNum.append(newResNum)
 
     if idx == pdbLength-1:
         res=resNum[resCount].replace(" ","")
-        intf += f"{res}:{resProb[resCount]}"
+        intf += f"{res}:{resProb[resCount]} "
 
         resCount +=1
         if resCount < len(resNum):
             resNum[resCount] = newResNum
         else:
             resNum.append(newResNum)
-    isInt = 1 if resProb[resCount] > cutoff else 0
-intf=intf.rstrip()
+    #isInt = 1 if resProb[resCount] > cutoff else 0 <-- unsure when used 
+
+if intf.endswith(" "):
+    intf = intf[:-1]
 
 print(intf)
 
